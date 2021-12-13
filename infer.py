@@ -1,3 +1,7 @@
+from pathlib import Path
+
+import argparse
+
 import glob
 import os
 
@@ -64,7 +68,7 @@ class ToTensor(object):
 
 
 class InferenceHelper:
-    def __init__(self, dataset='nyu', device='cuda:0'):
+    def __init__(self, dataset='nyu', device='cuda:0', weights_path='pretrained'):
         self.toTensor = ToTensor()
         self.device = device
         if dataset == 'nyu':
@@ -72,13 +76,13 @@ class InferenceHelper:
             self.max_depth = 10
             self.saving_factor = 1000  # used to save in 16 bit
             model = UnetAdaptiveBins.build(n_bins=256, min_val=self.min_depth, max_val=self.max_depth)
-            pretrained_path = "./pretrained/AdaBins_nyu.pt"
+            pretrained_path = os.path.join(weights_path, 'AdaBins_nyu.pt')
         elif dataset == 'kitti':
             self.min_depth = 1e-3
             self.max_depth = 80
             self.saving_factor = 256
             model = UnetAdaptiveBins.build(n_bins=256, min_val=self.min_depth, max_val=self.max_depth)
-            pretrained_path = "./pretrained/AdaBins_kitti.pt"
+            pretrained_path = os.path.join(weights_path, 'AdaBins_kitti.pt')
         else:
             raise ValueError("dataset can be either 'nyu' or 'kitti' but got {}".format(dataset))
 
@@ -134,28 +138,29 @@ class InferenceHelper:
         transform = ToTensor()
         all_files = glob.glob(os.path.join(test_dir, "*"))
         self.model.eval()
+
         for f in tqdm(all_files):
             image = np.asarray(Image.open(f), dtype='float32') / 255.
             image = transform(image).unsqueeze(0).to(self.device)
 
             centers, final = self.predict(image)
-            # final = final.squeeze().cpu().numpy()
 
-            final = (final * self.saving_factor).astype('uint16')
-            basename = os.path.basename(f).split('.')[0]
+            final = (final * self.saving_factor).astype('uint16').squeeze()
+            basename = Path(f).stem
             save_path = os.path.join(out_dir, basename + ".png")
 
             Image.fromarray(final).save(save_path)
 
 
 if __name__ == '__main__':
-    import matplotlib.pyplot as plt
     from time import time
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--input_folder', type=str, help='The folder containing RGB images.')
+    parser.add_argument('--output_folder', type=str, help='The folder to save the output to.')
 
-    img = Image.open("test_imgs/classroom__rgb_00283.jpg")
+    args = parser.parse_args()
+
     start = time()
     inferHelper = InferenceHelper()
-    centers, pred = inferHelper.predict_pil(img)
-    print(f"took :{time() - start}s")
-    plt.imshow(pred.squeeze(), cmap='magma_r')
-    plt.show()
+    inferHelper.predict_dir(args.input_folder, args.output_folder)
+    print(f"took :{time() - start:.2f}s")
