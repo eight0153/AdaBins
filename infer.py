@@ -149,7 +149,7 @@ class InferenceHelper:
             basename = Path(f).stem
             save_path = os.path.join(out_dir, basename + ".png")
 
-            Image.fromarray(final).save(save_path)
+            Image.fromarray(final).convert('I;16').save(save_path)
 
 
 if __name__ == '__main__':
